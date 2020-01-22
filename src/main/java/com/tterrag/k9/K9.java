@@ -43,6 +43,7 @@ import lombok.extern.slf4j.Slf4j;
 import reactor.core.publisher.Hooks;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
+import se.gory_moon.lj.LeaveJoinListener;
 
 @Slf4j
 public class K9 {
@@ -181,9 +182,11 @@ public class K9 {
             ircHandler = Mono.<Void>fromRunnable(() -> IRC.INSTANCE.connect(args.ircNickname, args.ircPassword))
                 .publishOn(Schedulers.newSingle("IRC Thread"));
         }
-        
+
+        Mono<Void> ljReady = LeaveJoinListener.INSTANCE.init(this);
+
         return Mono.fromRunnable(commands::slurpCommands)
-            .then(Mono.when(client.login(), onReady, onInitialReady, reactionHandler, messageHandler, consoleHandler, ircHandler));
+            .then(Mono.when(client.login(), onReady, onInitialReady, reactionHandler, messageHandler, consoleHandler, ircHandler, ljReady));
     }
 
     public static String getVersion() {
