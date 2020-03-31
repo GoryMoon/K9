@@ -1,7 +1,6 @@
 package se.gory_moon.lj;
 
 import com.tterrag.k9.K9;
-import discord4j.core.DiscordClient;
 import discord4j.core.event.domain.guild.MemberJoinEvent;
 import discord4j.core.event.domain.guild.MemberLeaveEvent;
 import discord4j.core.event.domain.guild.MemberUpdateEvent;
@@ -40,7 +39,7 @@ public enum LeaveJoinListener {
                 .flatMap(this::onRename)
                 .then();
 
-        return Mono.when(onLeave, onJoin, onUpdate);
+        return Mono.zip(onLeave, onJoin, onUpdate).then();
     }
 
     private Mono<MemberLeaveEvent> onLeave(MemberLeaveEvent event) {
