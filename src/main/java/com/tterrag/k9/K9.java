@@ -136,7 +136,7 @@ public class K9 {
                 .then(Mono.fromRunnable(commands::complete))
                 .then(YarnDownloader.INSTANCE.start())
                 .then(McpDownloader.INSTANCE.start())
-                .then(args.yarn2mcpOutput != null ? new Yarn2McpService(args.yarn2mcpOutput).start() : Mono.empty());
+                .then(args.yarn2mcpOutput != null ? new Yarn2McpService(args.yarn2mcpOutput).start() : Mono.never());
         
         Mono<Void> reactionHandler = client.getEventDispatcher().on(ReactionAddEvent.class)
                 .flatMap(evt -> PaginatedMessageFactory.INSTANCE.onReactAdd(evt)
@@ -160,7 +160,9 @@ public class K9 {
         // The above System.exit(0) will trigger this hook
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             commands.onShutdown();
-            client.logout().block();
+            if (client.isConnected()) {
+                client.logout().block();
+            }
         }));
                 
         // Handle "stop" and any future commands
@@ -175,9 +177,9 @@ public class K9 {
                 }
                 Threads.sleep(100);
             }
-        }).subscribeOn(Schedulers.newSingle("Console Listener"));
+        }).subscribeOn(Schedulers.newSingle("Console Listener", true));
 
-        Mono<Void> ircHandler = Mono.empty();
+        Mono<Void> ircHandler = Mono.never(); // Prevent immediate empty completion when IRC details are not provided
         if(args.ircNickname != null && args.ircPassword != null) {
             ircHandler = Mono.<Void>fromRunnable(() -> IRC.INSTANCE.connect(args.ircNickname, args.ircPassword))
                 .publishOn(Schedulers.newSingle("IRC Thread"));
@@ -186,7 +188,9 @@ public class K9 {
         Mono<Void> ljReady = LeaveJoinListener.INSTANCE.init(this);
 
         return Mono.fromRunnable(commands::slurpCommands)
-            .then(Mono.when(client.login(), onReady, onInitialReady, reactionHandler, messageHandler, consoleHandler, ircHandler, ljReady));
+            .then(Mono.zip(client.login(), onReady, onInitialReady, reactionHandler, messageHandler, consoleHandler, ircHandler, ljReady)
+                    .then()
+                    .doOnTerminate(() -> log.error("Unexpected completion of main bot subscriber!")));
     }
 
     public static String getVersion() {
