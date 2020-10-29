@@ -14,6 +14,7 @@ import com.tterrag.k9.commands.api.CommandContext;
 import com.tterrag.k9.commands.api.CommandPersisted;
 import com.tterrag.k9.commands.api.Flag;
 import com.tterrag.k9.commands.api.ICommand;
+import com.tterrag.k9.commands.api.ReadyContext;
 import com.tterrag.k9.mappings.Mapping;
 import com.tterrag.k9.mappings.MappingDatabase;
 import com.tterrag.k9.mappings.MappingDownloader;
@@ -29,7 +30,8 @@ import com.tterrag.k9.util.Requirements;
 import com.tterrag.k9.util.Requirements.RequiredType;
 import com.tterrag.k9.util.annotation.NonNull;
 
-import discord4j.core.object.util.Permission;
+import discord4j.core.GatewayDiscordClient;
+import discord4j.rest.util.Permission;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
@@ -89,13 +91,14 @@ public abstract class CommandMappings<@NonNull M extends Mapping> extends Comman
     }
     
     @Override
-    public void init(K9 k9, File dataFolder, Gson gson) {
+    public Mono<?> onReady(ReadyContext ctx) {
         if (parent != null || storage == null) {
-            super.init(k9, dataFolder, gson);
+            return super.onReady(ctx);
         }
         if (parent != null) {
-            parent.init(k9, dataFolder, gson);
+            return parent.onReady(ctx);
         }
+        return Mono.empty();
     }
     
     @Override
@@ -153,20 +156,13 @@ public abstract class CommandMappings<@NonNull M extends Mapping> extends Comman
                 .transform(Monos.flatZipWith(ctx.getChannel(), (mappings, channel) -> {
                     if (!mappings.isEmpty()) {
                         PaginatedMessage msg = new ListMessageBuilder<M>(this.name + " Mappings")
-                            .objectsPerPage(4)
                             .showIndex(false)
+                            .embed(false)
                             .addObjects(mappings)
                             .stringFunc(m -> m.formatMessage(mcver))
                             .color(color)
                             .build(channel, ctx.getMessage());
-                        
-                        if (mappings.size() <= 4) {
-                            BakedMessage baked = msg.getMessage(0);
-                            EmbedCreator.Builder embed = baked.getEmbed().title(null);
-                            return ctx.reply(embed.build());
-                        } else {
-                            return msg.send();
-                        }
+                        return msg.send();
                     } else {
                         return ctx.reply("No information found!");
                     }

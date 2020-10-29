@@ -1,16 +1,17 @@
 package se.gory_moon.lj;
 
 import com.tterrag.k9.K9;
+import discord4j.common.util.Snowflake;
+import discord4j.core.event.EventDispatcher;
 import discord4j.core.event.domain.guild.MemberJoinEvent;
 import discord4j.core.event.domain.guild.MemberLeaveEvent;
 import discord4j.core.event.domain.guild.MemberUpdateEvent;
-import discord4j.core.object.entity.Channel;
 import discord4j.core.object.entity.Guild;
-import discord4j.core.object.entity.GuildChannel;
 import discord4j.core.object.entity.Member;
-import discord4j.core.object.entity.TextChannel;
 import discord4j.core.object.entity.User;
-import discord4j.core.object.util.Snowflake;
+import discord4j.core.object.entity.channel.Channel;
+import discord4j.core.object.entity.channel.GuildChannel;
+import discord4j.core.object.entity.channel.TextChannel;
 import reactor.core.publisher.Mono;
 
 import java.util.Optional;
@@ -24,18 +25,18 @@ public enum LeaveJoinListener {
     public static Function<Snowflake, Boolean> logLeave = value -> true;
     public static Function<Snowflake, Boolean> logRename = value -> true;
 
-    public Mono<Void> init(K9 client) {
+    public Mono<Void> init(K9 client, EventDispatcher events) {
         client.getCommands().slurpCommands("se.gory_moon.lj.commands");
 
-        Mono<Void> onLeave = client.getClient().getEventDispatcher().on(MemberLeaveEvent.class)
+        Mono<Void> onLeave = events.on(MemberLeaveEvent.class)
                 .flatMap(this::onLeave)
                 .then();
 
-        Mono<Void> onJoin = client.getClient().getEventDispatcher().on(MemberJoinEvent.class)
+        Mono<Void> onJoin = events.on(MemberJoinEvent.class)
                 .flatMap(this::onJoin)
                 .then();
 
-        Mono<Void> onUpdate = client.getClient().getEventDispatcher().on(MemberUpdateEvent.class)
+        Mono<Void> onUpdate = events.on(MemberUpdateEvent.class)
                 .flatMap(this::onRename)
                 .then();
 

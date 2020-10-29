@@ -1,14 +1,13 @@
 package se.gory_moon.lj.commands;
 
-import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
-import com.tterrag.k9.K9;
 import com.tterrag.k9.commands.api.Command;
 import com.tterrag.k9.commands.api.CommandContext;
 import com.tterrag.k9.commands.api.CommandPersisted;
 import com.tterrag.k9.commands.api.Flag;
+import com.tterrag.k9.commands.api.ReadyContext;
 import com.tterrag.k9.util.Requirements;
-import discord4j.core.object.util.Permission;
+import discord4j.rest.util.Permission;
 import it.unimi.dsi.fastutil.objects.Object2ObjectArrayMap;
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
@@ -20,7 +19,6 @@ import org.apache.commons.lang3.tuple.Pair;
 import reactor.core.publisher.Mono;
 import se.gory_moon.lj.LeaveJoinListener;
 
-import java.io.File;
 import java.util.Map;
 import java.util.function.BiConsumer;
 import java.util.function.Function;
@@ -94,12 +92,12 @@ public class CommandLJSetup extends CommandPersisted<CommandLJSetup.JLData> {
     }
 
     @Override
-    public void init(K9 client, File dataFolder, Gson gson) {
-        super.init(client, dataFolder, gson);
+    public Mono<?> onReady(ReadyContext ctx) {
         LeaveJoinListener.channelId = value -> storage.get(value).getChannelId();
         LeaveJoinListener.logJoin = value -> storage.get(value).isLogJoin();
         LeaveJoinListener.logLeave = value -> storage.get(value).isLogLeave();
         LeaveJoinListener.logRename = value -> storage.get(value).isLogRename();
+        return super.onReady(ctx);
     }
 
     @Override

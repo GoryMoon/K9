@@ -8,6 +8,7 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -29,6 +30,7 @@ import com.tterrag.k9.commands.api.Command;
 import com.tterrag.k9.commands.api.CommandContext;
 import com.tterrag.k9.commands.api.CommandPersisted;
 import com.tterrag.k9.commands.api.Flag;
+import com.tterrag.k9.commands.api.ReadyContext;
 import com.tterrag.k9.listeners.CommandListener;
 import com.tterrag.k9.trick.Trick;
 import com.tterrag.k9.trick.TrickClojure;
@@ -46,14 +48,16 @@ import com.tterrag.k9.util.annotation.NonNull;
 import com.tterrag.k9.util.annotation.Nullable;
 
 import discord4j.core.object.entity.Guild;
-import discord4j.core.object.util.Permission;
-import discord4j.core.object.util.Snowflake;
+import discord4j.rest.util.Permission;
+import discord4j.common.util.Snowflake;
 import lombok.RequiredArgsConstructor;
 import lombok.Value;
+import lombok.extern.slf4j.Slf4j;
 import reactor.core.publisher.Mono;
 import reactor.netty.http.client.HttpClient;
 
 @Command
+@Slf4j
 public class CommandTrick extends CommandPersisted<Map<String, TrickData>> {
     
     @Value
@@ -119,16 +123,16 @@ public class CommandTrick extends CommandPersisted<Map<String, TrickData>> {
     }
     
     @Override
-    public void init(K9 k9, File dataFolder, Gson gson) {
-        super.init(k9, dataFolder, gson);
-
-        globalHelper = new SaveHelper<>(dataFolder, gson, new HashMap<>());
+    public Mono<?> onReady(ReadyContext ctx) {
+        globalHelper = new SaveHelper<>(ctx.getDataFolder(), ctx.getGson(), new HashMap<>());
         globalTricks = globalHelper.fromJson("global_tricks.json", getDataType());
         
         TrickFactories.INSTANCE.addFactory(DEFAULT_TYPE, TrickSimple::new);
         
-        final CommandClojure clj = (CommandClojure) k9.getCommands().findCommand((Snowflake) null, "clj").get();
+        final CommandClojure clj = (CommandClojure) ctx.getK9().getCommands().findCommand((Snowflake) null, "clj").get();
         TrickFactories.INSTANCE.addFactory(TrickType.CLOJURE, code -> new TrickClojure(clj, code));
+        
+        return super.onReady(ctx);
     }
     
     @Override
@@ -162,6 +166,16 @@ public class CommandTrick extends CommandPersisted<Map<String, TrickData>> {
                 return super.handleDelegate(delegate);
             }
         });
+    }
+    
+    @Override
+    protected void onLoad(long guild, Map<String, TrickData> data) {
+        for (String key : new HashSet<>(data.keySet())) {
+            if (!Patterns.VALID_TRICK_NAME.matcher(key).matches()) {
+                TrickData removed = data.remove(key);
+                log.error("Trick with invalid name removed: " + key + " -> " + removed.getInput());
+            }
+        }
     }
     
     // Copied from Formatter
@@ -216,6 +230,10 @@ public class CommandTrick extends CommandPersisted<Map<String, TrickData>> {
             if (type == null) {
                 return ctx.error("No such type \"" + typeId + "\"");
             }
+            final String trick = ctx.getArg(ARG_TRICK);
+            if (!Patterns.VALID_TRICK_NAME.matcher(trick).matches() || Patterns.DISCORD_MENTION.matcher(trick).find()) {
+                return ctx.error("Invalid trick name \"" + trick + "\"");
+            }
             String args = ctx.getArg(ARG_PARAMS);
             if (ctx.hasFlag(FLAG_FETCH)) {
                 try {
@@ -232,8 +250,6 @@ public class CommandTrick extends CommandPersisted<Map<String, TrickData>> {
                     args = codematcher.group(2).trim();
                 }
             }
-            TrickData data = new TrickData(type, args, ctx.getAuthor().get().getId().asLong());
-            final String trick = ctx.getArg(ARG_TRICK);
             if (ctx.getK9().getCommands().findCommand((Snowflake) null, trick).isPresent() && !ctx.getAuthor().filter(ctx.getK9().getCommands()::isAdmin).isPresent()) {
                 return ctx.error("Cannot add a trick with the same name as a command.");
             }
@@ -243,7 +259,7 @@ public class CommandTrick extends CommandPersisted<Map<String, TrickData>> {
                     return ctx.error("You do not have permission to add global tricks.");
                 }
                 existing = globalTricks.get(trick);
-                globalTricks.put(trick, data);
+                globalTricks.put(trick, new TrickData(type, args, existing == null ? ctx.getAuthorId().get().asLong() : existing.getOwner()));
                 globalHelper.writeJson("global_tricks.json", globalTricks);
                 trickCache.getOrDefault(null, new HashMap<>()).remove(trick);
             } else {
@@ -252,6 +268,7 @@ public class CommandTrick extends CommandPersisted<Map<String, TrickData>> {
                     return ctx.error("Cannot add local tricks in private message.");
                 }
                 existing = storage.get(ctx).get().get(trick);
+                TrickData data;
                 if (existing != null) {
                     if (existing.getOwner() != ctx.getAuthor().get().getId().asLong() && !REMOVE_PERMS.matches(ctx).block()) {
                         return ctx.error("A trick with this name already exists in this guild.");
@@ -259,8 +276,11 @@ public class CommandTrick extends CommandPersisted<Map<String, TrickData>> {
                     if (!ctx.hasFlag(FLAG_UPDATE)) {
                         return ctx.error("A trick with this name already exists! Use -u to overwrite.");
                     }
+                    data = new TrickData(type, args, existing.getOwner());
                 } else if (ctx.hasFlag(FLAG_UPDATE)) {
                     return ctx.error("No trick with that name exists to update.");
+                } else {
+                    data = new TrickData(type, args, ctx.getAuthor().get().getId().asLong());
                 }
                 storage.get(ctx).get().put(trick, data);
                 trickCache.getOrDefault(guild.getId().asLong(), new HashMap<>()).remove(trick);
@@ -292,7 +312,7 @@ public class CommandTrick extends CommandPersisted<Map<String, TrickData>> {
             if (data == null || ctx.hasFlag(FLAG_GLOBAL)) {
                 data = globalTricks.get(ctx.getArg(ARG_TRICK));
                 if (data == null) {
-                    if (!ctx.getMessage().getContent().get().startsWith(CommandListener.getPrefix(ctx.getGuildId()) + getTrickPrefix(ctx.getGuildId()))) {
+                    if (!ctx.getMessage().getContent().startsWith(CommandListener.getPrefix(ctx.getGuildId()) + getTrickPrefix(ctx.getGuildId()))) {
                         return ctx.error("No such trick!");
                     }
                     return Mono.empty();

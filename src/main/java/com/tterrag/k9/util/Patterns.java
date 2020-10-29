@@ -21,6 +21,8 @@ public class Patterns {
     
     public static final Pattern DISCORD_MENTION = Pattern.compile("<@&?!?([0-9]+)>");
     public static final Pattern DISCORD_CHANNEL = Pattern.compile("<#([0-9]+)>");
+    
+    public static final Pattern VALID_TRICK_NAME = Pattern.compile("(?![!?.\\/~]).+");
 
     public static final Pattern MATCH_ALL = Pattern.compile(".+$", Pattern.DOTALL);
     public static final Pattern MATCH_WORD = Pattern.compile("\\S+");
@@ -39,5 +41,5 @@ public class Patterns {
     public static final Pattern SRG_PARAM_ANON = Pattern.compile("(?:p_i)?(\\d+)_(\\d+)_?");
     public static final Pattern NOTCH_PARAM = Pattern.compile("([a-z]+\\$)*([a-z]+|\\d+)");
 
-    public static final Pattern YARN_TINY_FILENAME = Pattern.compile("yarn-(.*?)\\.(\\d+)?-tiny.gz");
+    public static final Pattern YARN_TINY_FILENAME = Pattern.compile("yarn-(.*?)\\.(\\d+)?(?:-tiny.gz|-mergedv2.jar)");
 }

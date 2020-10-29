@@ -1,16 +1,18 @@
 package com.tterrag.k9.util;
 
-import java.awt.Color;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Consumer;
 
 import discord4j.core.spec.EmbedCreateSpec;
+import discord4j.rest.util.Color;
 import lombok.Builder;
+import lombok.Getter;
 import lombok.Value;
 
 @Builder(builderClassName = "Builder")
+@Getter
 public class EmbedCreator implements Consumer<EmbedCreateSpec> {
     
     public static class Builder {
@@ -84,7 +86,7 @@ public class EmbedCreator implements Consumer<EmbedCreateSpec> {
             t.setFooter(footerText, footerIcon);
         }
         if (color != null) {
-            t.setColor(new Color(color));
+            t.setColor(Color.of(color));
         }
         if (timestamp != null) {
             t.setTimestamp(timestamp);
