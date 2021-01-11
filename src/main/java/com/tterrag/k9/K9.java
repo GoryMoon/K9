@@ -175,8 +175,6 @@ public class K9 {
             .eventService("Increments", MessageCreateEvent.class, events -> events
                     .filter(this::isUser)
                     .flatMap(IncrementListener.INSTANCE::onMessage))
-
-            Mono<Void> ljReady = LeaveJoinListener.INSTANCE.init(this, events);
         
             // I'll add this back when/if it's needed
             /*
@@ -186,6 +184,8 @@ public class K9 {
             */
             .service("Yarn Downloader", YarnDownloader.INSTANCE::start)
             .service("MCP Downloader", McpDownloader.INSTANCE::start);
+
+        LeaveJoinListener.INSTANCE.init(this, services);
 
         if (args.yarn2mcpOutput != null) {
             final Yarn2McpService yarn2mcp = new Yarn2McpService(args.yarn2mcpOutput, args.yarn2mcpUser, args.yarn2mcpPass);

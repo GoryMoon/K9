@@ -1,17 +1,21 @@
 package se.gory_moon.lj;
 
 import com.tterrag.k9.K9;
+import com.tterrag.k9.util.ServiceManager;
 import discord4j.common.util.Snowflake;
-import discord4j.core.event.EventDispatcher;
 import discord4j.core.event.domain.guild.MemberJoinEvent;
 import discord4j.core.event.domain.guild.MemberLeaveEvent;
 import discord4j.core.event.domain.guild.MemberUpdateEvent;
+import discord4j.core.object.audit.ActionType;
+import discord4j.core.object.audit.AuditLogEntry;
 import discord4j.core.object.entity.Guild;
 import discord4j.core.object.entity.Member;
 import discord4j.core.object.entity.User;
 import discord4j.core.object.entity.channel.Channel;
 import discord4j.core.object.entity.channel.GuildChannel;
 import discord4j.core.object.entity.channel.TextChannel;
+import org.apache.commons.lang3.tuple.Pair;
+import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 import java.util.Optional;
@@ -25,39 +29,47 @@ public enum LeaveJoinListener {
     public static Function<Snowflake, Boolean> logLeave = value -> true;
     public static Function<Snowflake, Boolean> logRename = value -> true;
 
-    public Mono<Void> init(K9 client, EventDispatcher events) {
+    public void init(K9 client, ServiceManager service) {
         client.getCommands().slurpCommands("se.gory_moon.lj.commands");
 
-        Mono<Void> onLeave = events.on(MemberLeaveEvent.class)
-                .flatMap(this::onLeave)
-                .then();
-
-        Mono<Void> onJoin = events.on(MemberJoinEvent.class)
-                .flatMap(this::onJoin)
-                .then();
-
-        Mono<Void> onUpdate = events.on(MemberUpdateEvent.class)
-                .flatMap(this::onRename)
-                .then();
-
-        return Mono.zip(onLeave, onJoin, onUpdate).then();
+        service
+                .eventService("LogLeave", MemberLeaveEvent.class, events -> events
+                        .flatMap(this::onLeave))
+                .eventService("LogJoin", MemberJoinEvent.class, events -> events
+                        .flatMap(this::onJoin))
+                .eventService("LogUpdate", MemberUpdateEvent.class, events -> events
+                        .flatMap(this::onRename));
     }
 
     private Mono<MemberLeaveEvent> onLeave(MemberLeaveEvent event) {
         return event.getGuild()
                 .filter($ -> isEnabled(event.getGuildId()))
-                .filter($ -> !event.getUser().isBot())
-                .filter(guild -> logLeave.apply(guild.getId()))
-                .flatMap(this::getGuildChannel)
-                .flatMap(channel -> logLJEvent("`--`", "has left the server.", event.getUser(), channel))
+                .filter($ -> !event.getUser().isBot() && logLeave.apply($.getId()))
+                .flatMap(guild -> getGuildChannel(guild).flatMap(channel -> Mono.just(Pair.of(guild, channel))))
+                .flatMap(pair -> Flux.merge(
+                        auditResponse(event.getUser(), pair.getRight(), pair.getLeft().getAuditLog(spec -> spec.setLimit(1).setActionType(ActionType.MEMBER_KICK))),
+                        logLJEvent("`--`", "has left the server.", event.getUser(), pair.getRight())
+                ).then())
                 .thenReturn(event);
+    }
+
+    private Mono<Void> auditResponse(User user, Channel guildChannel, Flux<AuditLogEntry> entryFlux) {
+        return entryFlux
+                .filter(e -> user.getId().equals(e.getTargetId().orElse(null)))
+                .take(1)
+                .flatMap(entry -> {
+                    if (guildChannel.getType() == Channel.Type.GUILD_TEXT) {
+                        TextChannel channel = (TextChannel) guildChannel;
+                        return channel.createMessage(spec -> spec.setContent(":monoFight1::monoFight2:")).then();
+                    }
+                    return Mono.empty();
+                }).then();
     }
 
     private Mono<MemberJoinEvent> onJoin(MemberJoinEvent event) {
         return event.getGuild()
                 .filter($ -> isEnabled(event.getGuildId()))
-                .filter($ -> !event.getMember().isBot())
-                .filter(guild -> logJoin.apply(guild.getId()))
+                .filter($ -> !event.getMember().isBot() && logJoin.apply($.getId()))
                 .flatMap(this::getGuildChannel)
                 .flatMap(channel -> logLJEvent("`++`" ,"has joined the server.", event.getMember(), channel))
                 .thenReturn(event);

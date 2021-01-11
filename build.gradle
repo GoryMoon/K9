@@ -33,7 +33,7 @@ def repo = Grgit.open(project.file('.'))
 if (System.getenv('BUILD_NUMBER') != null) {
     version += ".${System.getenv('BUILD_NUMBER')}"
 } else {
-    version += ".338-custom" // Increment https://ci.tterrag.com/job/K9/
+    version += ".350-custom" // Increment https://ci.tterrag.com/job/K9/
 }
 
 tasks.withType(JavaCompile) {
