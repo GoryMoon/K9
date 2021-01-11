@@ -60,7 +60,7 @@ public enum LeaveJoinListener {
                 .flatMap(entry -> {
                     if (guildChannel.getType() == Channel.Type.GUILD_TEXT) {
                         TextChannel channel = (TextChannel) guildChannel;
-                        return channel.createMessage(spec -> spec.setContent(":monoFight1::monoFight2:")).then();
+                        return channel.createMessage(spec -> spec.setContent("<:monoFight1:798321394936053790><:monoFight2:798321437504438361>")).then();
                     }
                     return Mono.empty();
                 }).then();
