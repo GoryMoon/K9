@@ -24,6 +24,7 @@ import com.tterrag.k9.listeners.IncrementListener;
 import com.tterrag.k9.logging.PrettifyMessageCreate;
 import com.tterrag.k9.mappings.Yarn2McpService;
 import com.tterrag.k9.mappings.mcp.McpDownloader;
+import com.tterrag.k9.mappings.official.OfficialDownloader;
 import com.tterrag.k9.mappings.yarn.YarnDownloader;
 import com.tterrag.k9.util.ConvertAdmins;
 import com.tterrag.k9.util.PaginatedMessageFactory;
@@ -61,7 +62,7 @@ public class K9 {
         
         @Parameter(names = "--admins", description = "A list of user IDs that are admins", converter = ConvertAdmins.class)
         private List<Snowflake> admins = Collections.singletonList(Snowflake.of(140245257416736769L)); // tterrag
-
+        
         @Parameter(names = "--ltapi", hidden = true) 
         private String loveTropicsApi;
         
@@ -130,8 +131,8 @@ public class K9 {
         GatewayBootstrap<GatewayOptions> gateway = client.gateway()
         .setEventDispatcher(ReplayingEventDispatcher.builder()
                 .replayEventFilter(e -> e instanceof ReadyEvent)
-        		.eventScheduler(Schedulers.boundedElastic())
-        		.build())
+                .eventScheduler(Schedulers.boundedElastic())
+                .build())
         .setEnabledIntents(IntentSet.of(
                 Intent.GUILDS, Intent.GUILD_MEMBERS, Intent.GUILD_PRESENCES,
                 Intent.GUILD_MESSAGES, Intent.GUILD_MESSAGE_REACTIONS,
@@ -175,7 +176,7 @@ public class K9 {
             .eventService("Increments", MessageCreateEvent.class, events -> events
                     .filter(this::isUser)
                     .flatMap(IncrementListener.INSTANCE::onMessage))
-        
+
             // I'll add this back when/if it's needed
             /*
             .eventService("EnderIO", MessageCreateEvent.class, events -> events
@@ -183,7 +184,8 @@ public class K9 {
                     .doOnNext(EnderIOListener.INSTANCE::onMessage))
             */
             .service("Yarn Downloader", YarnDownloader.INSTANCE::start)
-            .service("MCP Downloader", McpDownloader.INSTANCE::start);
+            .service("MCP Downloader", McpDownloader.INSTANCE::start)
+            .service("Official Downloader", OfficialDownloader.INSTANCE::start);
 
         LeaveJoinListener.INSTANCE.init(this, services);
 
@@ -194,8 +196,15 @@ public class K9 {
 
         return Mono.fromRunnable(commands::slurpCommands)
                 .then(gateway.login())
-                .flatMap(c -> Mono.when(onInitialReady.apply(c.getEventDispatcher()), services.start(c)).thenReturn(c))
-                .flatMap(this::teardown);
+                .flatMap(c ->
+                    Mono.when(onInitialReady.apply(c.getEventDispatcher()), services.start(c), teardown(c))
+                        .doOnError(t -> log.error("Unexpected error received in main bot subscriber:", t))
+                        .doOnTerminate(() -> log.error("Unexpected completion of main bot subscriber!"))
+                        .onErrorResume($ -> Mono.empty())
+                        .thenReturn(c))
+                .flatMap(c -> Mono.fromRunnable(commands::onShutdown)
+                        .then(c.logout())
+                        .then(c.onDisconnect()));
     }
 
     private boolean isUser(MessageCreateEvent evt) {
@@ -211,7 +220,7 @@ public class K9 {
                 while (scan.hasNextLine()) {
                     if (scan.nextLine().equals("stop")) {
                         scan.close();
-                        System.exit(0);
+                        return null; // Empty completion will bubble up to zip below
                     }
                 }
                 Threads.sleep(100);
@@ -224,10 +233,10 @@ public class K9 {
             commands.onShutdown();
             gatewayClient.logout().block();
         }));
-
-        return Mono.zip(consoleHandler, gatewayClient.onDisconnect())
+        
+        return consoleHandler
                    .then()
-                   .doOnTerminate(() -> log.error("Unexpected completion of main bot subscriber!"));
+                   .doOnError(t -> log.error("Console handler error:", t));
     }
 
     public static String getVersion() {
