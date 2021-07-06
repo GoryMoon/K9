@@ -34,6 +34,7 @@ import discord4j.common.util.Snowflake;
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
+import lombok.With;
 import lombok.experimental.Wither;
 import reactor.core.Disposable;
 import reactor.core.publisher.Mono;
@@ -48,9 +49,9 @@ public class CommandContext {
     private final K9 k9;
     private final Message message;
     private final Optional<Snowflake> guildId;
-    @Wither(onMethod = @__({ @NonNull }))
+    @With(onMethod = @__({ @NonNull }))
     private final Map<Flag, String> flags;
-    @Wither(onMethod = @__({ @NonNull }))
+    @With(onMethod = @__({ @NonNull }))
     private final Map<Argument<?>, String> args;
     
     // Cached monos
